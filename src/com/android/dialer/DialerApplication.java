@@ -23,9 +23,9 @@ import com.android.contacts.common.extensions.ExtensionsFactory;
 import com.android.contacts.commonbind.analytics.AnalyticsUtil;
 import com.android.dialer.discovery.WifiCallStatusNudgeListener;
 import com.android.dialer.incall.InCallMetricsHelper;
-import com.android.phone.common.incall.CallMethodHelper;
+import com.android.phone.common.incall.DialerDataSubscription;
 import com.android.dialer.util.MetricsHelper;
-
+import com.android.dialer.deeplink.DeepLinkIntegrationManager;
 
 public class DialerApplication extends Application {
 
@@ -44,10 +44,11 @@ public class DialerApplication extends Application {
         AnalyticsUtil.initialize(this);
         Trace.endSection();
 
-        CallMethodHelper.init(this);
+        DialerDataSubscription.init(this);
         MetricsHelper.init(this);
         WifiCallStatusNudgeListener.init(this);
         InCallMetricsHelper.init(this);
+        DeepLinkIntegrationManager.getInstance().setUp(this);
         Trace.endSection();
 
     }

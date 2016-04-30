@@ -17,12 +17,10 @@
 package com.android.dialer.calllog;
 
 import android.app.Activity;
-import android.app.DialogFragment;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.res.Resources;
 import android.content.Intent;
-import android.graphics.PorterDuff.Mode;
 import android.net.Uri;
 import android.provider.CallLog.Calls;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
@@ -39,15 +37,13 @@ import android.widget.QuickContactBadge;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-import com.android.contacts.common.util.BlockContactHelper;
 import com.android.dialer.widget.DialerQuickContact;
-import com.android.internal.telephony.util.BlacklistUtils;
+import com.android.dialer.deeplink.DeepLinkIntegrationManager;
 
 import com.android.contacts.common.ContactPhotoManager;
 import com.android.contacts.common.ContactPhotoManager.DefaultImageRequest;
 import com.android.contacts.common.dialog.CallSubjectDialog;
 import com.android.contacts.common.testing.NeededForTesting;
-import com.android.contacts.common.util.BlockContactHelper;
 import com.android.contacts.common.util.UriUtils;
 import com.android.dialer.R;
 import com.android.dialer.util.DialerUtils;
@@ -55,10 +51,11 @@ import com.android.dialer.util.PhoneNumberUtil;
 import com.android.dialer.voicemail.VoicemailPlaybackPresenter;
 import com.android.dialer.voicemail.VoicemailPlaybackLayout;
 
-import com.android.phone.common.incall.CallMethodHelper;
 import com.android.phone.common.incall.CallMethodInfo;
+import com.android.phone.common.incall.DialerDataSubscription;
+import com.android.phone.common.incall.utils.CallMethodFilters;
+import com.cyanogen.ambient.deeplink.DeepLink;
 import com.cyanogen.ambient.incall.extension.OriginCodes;
-import com.cyanogen.lookup.phonenumber.provider.LookupProviderImpl;
 
 /**
  * This is an object containing references to views contained by the call log list item. This
@@ -86,6 +83,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
     public final ImageView primaryActionButtonView;
     /** DialerQuickContact */
     public final DialerQuickContact dialerQuickContact;
+    public DeepLink mDeepLink;
 
     /** The view containing call log item actions.  Null until the ViewStub is inflated. */
     public View actionsView;
@@ -93,6 +91,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
     public VoicemailPlaybackLayout voicemailPlaybackView;
     public View callButtonView;
     public View videoCallButtonView;
+    public View viewNoteButton;
     public View createNewContactButtonView;
     public View addToExistingContactButtonView;
     public View sendMessageView;
@@ -115,6 +114,12 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
      * deletes a call log entry.
      */
     public long[] callIds;
+
+    /**
+     * The time for each call in callIds represented by the current call log entry.  Used when the
+     * user views the call log to determine note status
+     */
+    public long[] callTimes;
 
     /**
      * The callable phone number for the current call log entry.  Cached here as the call back
@@ -191,6 +196,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
     private final CallLogListItemHelper mCallLogListItemHelper;
     private final VoicemailPlaybackPresenter mVoicemailPlaybackPresenter;
     private final BlockContactPresenter mBlockContactPresenter;
+    public final DeepLinkPresenter mDeepLinkPresenter;
 
     private final int mPhotoSize;
 
@@ -221,6 +227,8 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
         mCallLogListItemHelper = callLogListItemHelper;
         mVoicemailPlaybackPresenter = voicemailPlaybackPresenter;
         mBlockContactPresenter = blockContactPresenter;
+        mDeepLinkPresenter = new DeepLinkPresenter(mContext);
+        mDeepLinkPresenter.setCallLogViewHolder(this);
         mContactInfoHelper = contactInfoHelper;
 
         this.rootView = rootView;
@@ -298,6 +306,9 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
             createNewContactButtonView = actionsView.findViewById(R.id.create_new_contact_action);
             createNewContactButtonView.setOnClickListener(this);
 
+            viewNoteButton = actionsView.findViewById(R.id.view_note_action);
+            viewNoteButton.setOnClickListener(this);
+
             addToExistingContactButtonView =
                     actionsView.findViewById(R.id.add_to_existing_contact_action);
             addToExistingContactButtonView.setOnClickListener(this);
@@ -371,7 +382,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
 
         CallMethodInfo cmi = null;
         if (inCallComponentName != null) {
-            cmi = CallMethodHelper.getCallMethod(inCallComponentName);
+            cmi = DialerDataSubscription.get(mContext).getPluginIfExists(inCallComponentName);
         }
 
         if (!TextUtils.isEmpty(voicemailUri) && canPlaceCallToNumber) {
@@ -387,6 +398,12 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
             callButtonView.setVisibility(View.GONE);
         }
 
+        if (mDeepLink != null) {
+            ImageView icon = (ImageView) viewNoteButton.findViewById(R.id.view_note_action_icon);
+            icon.setImageDrawable(mDeepLink.getDrawableIcon(mContext));
+        } else {
+            viewNoteButton.setVisibility(View.GONE);
+        }
         // If one of the calls had video capabilities, show the video call button.
         if (mTelecomCallLogCache.isVideoEnabled() && canPlaceCallToNumber &&
                 phoneCallDetailsViews.callTypeIcons.isVideoShown() ||
@@ -507,7 +524,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
         if (cn == null) {
             dialerQuickContact.setAttributionBadge(null);
         } else {
-            CallMethodInfo cmi = CallMethodHelper.getCallMethod(cn);
+            CallMethodInfo cmi = DialerDataSubscription.get(mContext).getPluginIfExists(cn);
             if (cmi == null) {
                 dialerQuickContact.setAttributionBadge(null);
                 Log.v(TAG, "Call Method was Null for: " + cn.toShortString());
@@ -564,10 +581,15 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
                                                                            view in dialog. */
                     numberType, /* phone number type (e.g. mobile) in second line of contact view */
                     accountHandle);
+
+        } else if (view.getId() == R.id.view_note_action) {
+            sendOpeningExisitingEvent();
+            mContext.startActivity(mDeepLink.createViewIntent());
         } else {
             final String inCallAction = (String) view.getTag(R.id.incall_provider_action_type);
             if (inCallComponentName != null && !TextUtils.isEmpty(inCallAction)) {
-                CallMethodInfo cmi = CallMethodHelper.getCallMethod(inCallComponentName);
+                CallMethodInfo cmi = DialerDataSubscription.get(mContext)
+                        .getPluginIfExists(inCallComponentName);
                 if (cmi != null) {
                     switch (inCallAction) {
                         case INCALL_ACTION_TYPE_VIDEO:
@@ -630,6 +652,11 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
         viewHolder.blockCallerButtonView = new TextView(context);
 
         return viewHolder;
+    }
+
+    private void sendOpeningExisitingEvent() {
+        DeepLinkIntegrationManager.getInstance().sendContentSentEvent(mContext, mDeepLink,
+                new ComponentName(mContext, CallLogListItemViewHolder.class));
     }
 
 }

@@ -40,7 +40,6 @@ import android.view.ViewGroup;
 
 import com.android.contacts.common.GeoUtil;
 import com.android.contacts.common.activity.fragment.BlockContactDialogFragment;
-import com.android.contacts.common.util.BlockContactHelper;
 import com.android.contacts.common.util.PermissionsUtil;
 import com.android.dialer.R;
 import com.android.dialer.util.EmptyLoader;
@@ -48,14 +47,15 @@ import com.android.dialer.voicemail.VoicemailPlaybackPresenter;
 import com.android.dialer.widget.EmptyContentView;
 import com.android.dialer.widget.EmptyContentView.OnEmptyViewActionButtonClickedListener;
 import com.android.dialerbind.ObjectFactory;
-import com.android.phone.common.incall.CallMethodHelper;
+import com.android.dialer.deeplink.DeepLinkIntegrationManager;
 import com.android.phone.common.incall.CallMethodInfo;
+import com.android.phone.common.incall.DialerDataSubscription;
+import com.cyanogen.ambient.common.api.ResultCallback;
+import com.cyanogen.ambient.deeplink.DeepLink;
+import com.cyanogen.ambient.deeplink.applicationtype.DeepLinkApplicationType;
 import com.cyanogen.ambient.incall.CallLogConstants;
 
 import java.util.HashMap;
-
-import android.util.Log;
-import com.cyanogen.lookup.phonenumber.provider.LookupProviderImpl;
 
 /**
  * Displays a list of call log entries. To filter for a particular kind of call
@@ -124,6 +124,10 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
     // Exactly same variable is in Fragment as a package private.
     private boolean mMenuVisible = true;
 
+    // track the enabled/disabled status of the DeepLinkApi so we can update the CalLog in onResume
+    // when returning from settings.
+    private boolean isDeepLinkApiEnabled = false;
+
     // Default to all calls.
     private int mCallTypeFilter = CallLogQueryHandler.CALL_TYPE_ALL;
 
@@ -144,16 +148,29 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
     /* InCall Plugin Listener ID */
     private static final String AMBIENT_SUBSCRIPTION_ID = "CallLogFragment";
 
-    private CallMethodHelper.CallMethodReceiver pluginsUpdatedReceiver =
-            new CallMethodHelper.CallMethodReceiver() {
+    private DialerDataSubscription.PluginChanged<CallMethodInfo> pluginsUpdatedReceiver =
+            new DialerDataSubscription.PluginChanged<CallMethodInfo>() {
                 @Override
-                public void onChanged(HashMap<ComponentName, CallMethodInfo> callMethodInfos) {
+                public void onChanged(HashMap<ComponentName, CallMethodInfo> pluginInfos) {
                     // We moved this here because well, getting our call method data takes some time
                     // we _should_cache this icon somewhere -> load that, then when this updates
                     // we could update the icons. Currentlly the user has some ugly ugly flash
                     // as some icons pop up.
                     refreshData();
                     mAdapter.startCache();
+                }
+            };
+
+    /* DeepLinkApi global on/off settings check callback. */
+    private ResultCallback<DeepLink.BooleanResult> mDeepLinkEnabledCallback =
+            new ResultCallback<DeepLink.BooleanResult>() {
+                @Override
+                public void onResult(DeepLink.BooleanResult result) {
+                    boolean value = result.getResults();
+                    if (isDeepLinkApiEnabled != value) {
+                        refreshData();
+                    }
+                    isDeepLinkApiEnabled = value;
                 }
             };
 
@@ -225,7 +242,6 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
         }
 
         mBlockContactPresenter = new BlockContactPresenter(activity, this);
-
         boolean isShowingRecentsTab = mLogLimit != NO_LOG_LIMIT || mDateLimit != NO_DATE_LIMIT;
         mAdapter = ObjectFactory.newCallLogAdapter(
                 getActivity(),
@@ -234,6 +250,7 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
                 mVoicemailPlaybackPresenter,
                 mBlockContactPresenter,
                 isShowingRecentsTab);
+        areDeepLinkEnabled();
     }
 
     /** Called by the CallLogQueryHandler when the list of calls has been fetched or updated. */
@@ -317,6 +334,15 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
 
         String currentCountryIso = GeoUtil.getCurrentCountryIso(getActivity());
         mRecyclerView.setAdapter(mAdapter);
+        mRecyclerView.setRecyclerListener(new RecyclerView.RecyclerListener() {
+            @Override
+            public void onViewRecycled(RecyclerView.ViewHolder holder) {
+                if (holder instanceof CallLogListItemViewHolder) {
+                    final CallLogListItemViewHolder views = (CallLogListItemViewHolder) holder;
+                    mAdapter.mDeepLinkCache.clearPendingQueries(views.number, views.callTimes);
+                }
+            }
+        });
 
         fetchCalls();
         return view;
@@ -352,11 +378,13 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
             updateEmptyMessage(mCallTypeFilter);
         }
         mHasReadCallLogPermission = hasReadCallLogPermission;
-
-        if (CallMethodHelper.subscribe(AMBIENT_SUBSCRIPTION_ID, pluginsUpdatedReceiver)) {
+        if (DialerDataSubscription.get(getActivity())
+                .subscribe(AMBIENT_SUBSCRIPTION_ID, pluginsUpdatedReceiver)) {
             refreshData();
             mAdapter.startCache();
         }
+
+        areDeepLinkEnabled();
     }
 
     @Override
@@ -366,7 +394,7 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
         }
         mAdapter.pauseCache();
 
-        CallMethodHelper.unsubscribe(AMBIENT_SUBSCRIPTION_ID);
+        DialerDataSubscription.get(getActivity()).unsubscribe(AMBIENT_SUBSCRIPTION_ID);
 
         super.onPause();
     }
@@ -482,6 +510,11 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
             // Refresh the display of the existing data to update the timestamp text descriptions.
             mAdapter.notifyDataSetChanged();
         }
+    }
+
+    private void areDeepLinkEnabled() {
+        DeepLinkIntegrationManager.getInstance().isApplicationTypeEnabled(
+                DeepLinkApplicationType.NOTE, mDeepLinkEnabledCallback);
     }
 
     /**

@@ -202,22 +202,20 @@ public class DialerPhoneNumberListAdapter extends PhoneNumberListAdapter {
     @Override
     public String getLabelType(Cursor c, int type) {
         if (type == ContactsContract.CommonDataKinds.Phone.TYPE_CUSTOM) {
-            final String providerLabel = c.getString(PhoneNumberListAdapter.PhoneQuery.PHONE_MIME_TYPE);
-            CallMethodInfo cmi = CallMethodFilters.getMethodForMimeType(providerLabel, false,
+            final String mimetype = c.getString(PhoneNumberListAdapter.PhoneQuery.PHONE_MIME_TYPE);
+            CallMethodInfo cmi = CallMethodFilters.getMethodForMimeType(mimetype, false,
                     DialerDataSubscription.get(getContext()));
+
             if (cmi != null) {
                 return cmi.mName;
-            } else {
-                return null;
             }
-        } else {
-            return null;
         }
+        return null;
     }
 
     private void assignShortcutToView(ContactListItemView v, int shortcutType, int position) {
         final CharSequence text;
-        final int drawableId;
+        int drawableId;
         final Drawable drawableRaw;
         final Resources resources = getContext().getResources();
         final String number = getFormattedQueryString();
@@ -228,7 +226,7 @@ public class DialerPhoneNumberListAdapter extends PhoneNumberListAdapter {
                         mBidiFormatter.unicodeWrap(number, TextDirectionHeuristics.LTR));
 
                 CallMethodInfo ccm = getCurrentCallMethod();
-                if (ccm != null && ccm.mIsInCallProvider) {
+                if (ccm != null && ccm.mIsInCallProvider && ccm.mBrandIcon != null) {
                     drawableId = 0;
                     drawableRaw = ImageUtils.scaleDrawable(ccm.mBrandIcon, 0.5f);
                 } else {
@@ -271,7 +269,12 @@ public class DialerPhoneNumberListAdapter extends PhoneNumberListAdapter {
                     text = resources.getString(R.string.sign_in_hint_text, cmi.mName);
                 }
                 drawableId = 0;
-                drawableRaw = ImageUtils.scaleDrawable(cmi.mBrandIcon, 0.5f);
+                if (cmi.mBrandIcon != null) {
+                    drawableRaw = ImageUtils.scaleDrawable(cmi.mBrandIcon, 0.5f);
+                } else {
+                    drawableId = R.drawable.ic_search_phone;
+                    drawableRaw = null;
+                }
                 break;
             default:
                 throw new IllegalArgumentException("Invalid shortcut type");

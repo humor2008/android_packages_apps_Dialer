@@ -42,6 +42,7 @@ import android.widget.Toast;
 
 import com.android.contacts.common.ContactPhotoManager;
 import com.android.contacts.common.ContactPhotoManager.DefaultImageRequest;
+import com.android.contacts.common.util.ContactDisplayUtils;
 import com.android.contacts.common.GeoUtil;
 import com.android.contacts.common.CallUtil;
 import com.android.contacts.common.activity.fragment.BlockContactDialogFragment;
@@ -62,6 +63,7 @@ import com.android.dialer.widget.DialerQuickContact;
 import com.android.phone.common.incall.CallMethodInfo;
 
 import com.cyanogen.ambient.incall.extension.OriginCodes;
+import com.cyanogen.lookup.phonenumber.contract.LookupProvider;
 import com.cyanogen.lookup.phonenumber.provider.LookupProviderImpl;
 
 /**
@@ -196,8 +198,18 @@ public class CallDetailActivity extends Activity
          */
         private CharSequence getNumberTypeOrLocation(PhoneCallDetails details) {
             if (!TextUtils.isEmpty(details.name)) {
-                return Phone.getTypeLabel(mResources, details.numberType,
-                        details.numberLabel);
+                String callMethodName = null;
+                if (details.inCallComponentName != null) {
+                    CallMethodInfo cmi = DialerDataSubscription.get(mContext)
+                            .getPluginIfExists(details.inCallComponentName);
+                    if (cmi != null) {
+                        callMethodName = cmi.mName;
+                    }
+                }
+
+                return ContactDisplayUtils.getLabelForCall(getApplicationContext(),
+                        details.number.toString(), details.numberType,
+                        details.numberLabel, callMethodName);
             } else {
                 return details.geocode;
             }
@@ -211,6 +223,7 @@ public class CallDetailActivity extends Activity
     private TextView mCallerNumber;
     private TextView mAccountLabel;
     private View mCallButton;
+    private LookupProvider mLookupProvider;
     private ContactInfoHelper mContactInfoHelper;
     private BlockContactHelper mBlockContactHelper;
 
@@ -274,8 +287,10 @@ public class CallDetailActivity extends Activity
             }
         });
 
-        mContactInfoHelper = new ContactInfoHelper(this, GeoUtil.getCurrentCountryIso(this));
-        mBlockContactHelper = new BlockContactHelper(this, new LookupProviderImpl(this));
+        mBlockContactHelper = new BlockContactHelper(this);
+        mLookupProvider = LookupProviderImpl.INSTANCE.get(this);
+        mContactInfoHelper = new ContactInfoHelper(this, GeoUtil.getCurrentCountryIso(this),
+                mLookupProvider);
         getActionBar().setDisplayHomeAsUpEnabled(true);
 
         if (getIntent().getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)) {
@@ -286,6 +301,7 @@ public class CallDetailActivity extends Activity
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        LookupProviderImpl.INSTANCE.release();
         mBlockContactHelper.destroy();
         mCallRecordingDataStore.close();
     }

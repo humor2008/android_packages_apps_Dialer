@@ -30,6 +30,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.contacts.common.GeoUtil;
+import com.android.contacts.common.util.PhoneNumberHelper;
 import com.android.dialer.PhoneCallDetails;
 import com.android.dialer.util.AsyncTaskExecutor;
 import com.android.dialer.util.AsyncTaskExecutors;
@@ -38,6 +39,7 @@ import com.android.dialer.util.TelecomUtil;
 
 import com.cyanogen.ambient.incall.CallLogConstants;
 
+import com.cyanogen.lookup.phonenumber.provider.LookupProviderImpl;
 import com.google.common.annotations.VisibleForTesting;
 
 import com.suda.cloud.phone.PhoneUtil;
@@ -158,17 +160,23 @@ public class CallLogAsyncTaskUtil {
                     cursor.getString(CallDetailQuery.ACCOUNT_COMPONENT_NAME),
                     cursor.getString(CallDetailQuery.ACCOUNT_ID));
 
+            final boolean isInCallPluginContactId =
+                    ContactInfoHelper.isInCallPluginContactId(context, accountHandle, number,
+                            countryIso, cursor.getString(CallDetailQuery.PLUGIN_PACKAGE_NAME));
+
             // If this is not a regular number, there is no point in looking it up in the contacts.
-            ContactInfoHelper contactInfoHelper =
-                    new ContactInfoHelper(context, GeoUtil.getCurrentCountryIso(context));
             boolean isVoicemail = PhoneNumberUtil.isVoicemailNumber(context, accountHandle, number);
             boolean shouldLookupNumber =
                     PhoneNumberUtil.canPlaceCallsTo(number, numberPresentation) && !isVoicemail;
 
             ContactInfo info = ContactInfo.EMPTY;
             if (shouldLookupNumber) {
-                ContactInfo lookupInfo = contactInfoHelper.lookupNumber(number, countryIso);
+                ContactInfoHelper contactInfoHelper =
+                        new ContactInfoHelper(context, GeoUtil.getCurrentCountryIso(context),
+                                LookupProviderImpl.INSTANCE.get(context));
+                ContactInfo lookupInfo = contactInfoHelper.lookupNumber(number, countryIso, false);
                 info = lookupInfo != null ? lookupInfo : ContactInfo.EMPTY;
+                LookupProviderImpl.INSTANCE.release();
             }
 
             PhoneCallDetails details = new PhoneCallDetails(

@@ -58,9 +58,10 @@ public class CallLogAdapterTest extends AndroidTestCase {
         };
 
         ContactInfoHelper fakeContactInfoHelper =
-                new ContactInfoHelper(getContext(), TEST_COUNTRY_ISO) {
+                new ContactInfoHelper(getContext(), TEST_COUNTRY_ISO, null) {
                     @Override
-                    public ContactInfo lookupNumber(String number, String countryIso) {
+                    public ContactInfo lookupNumber(String number, String countryIso,
+                            boolean isInCallPluginContactId) {
                         ContactInfo info = new ContactInfo();
                         info.number = number;
                         info.formattedNumber = number;

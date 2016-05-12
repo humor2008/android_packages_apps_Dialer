@@ -48,6 +48,7 @@ import com.android.dialer.calllog.ContactInfoHelper;
 import com.android.dialer.util.IntentUtil;
 import com.android.dialer.util.PhoneNumberUtil;
 import com.android.dialer.widget.LinearColorBar;
+import com.cyanogen.lookup.phonenumber.contract.LookupProvider;
 import com.cyanogen.lookup.phonenumber.provider.LookupProviderImpl;
 
 /**
@@ -87,10 +88,13 @@ public class CallStatsDetailActivity extends Activity implements
     private String mNumber = null;
     private boolean mHasEditNumberBeforeCallOption;
 
+    private LookupProvider mLookupProvider;
+
     private class UpdateContactTask extends AsyncTask<String, Void, ContactInfo> {
         @Override
         protected ContactInfo doInBackground(String... strings) {
-            ContactInfo info = mContactInfoHelper.lookupNumber(strings[0], strings[1]);
+            ContactInfo info = mContactInfoHelper.lookupNumber(strings[0], strings[1],
+                    Boolean.valueOf(strings[2]));
             return info;
         }
 
@@ -110,8 +114,10 @@ public class CallStatsDetailActivity extends Activity implements
         setContentView(R.layout.call_stats_detail);
 
         mResources = getResources();
-        mContactInfoHelper = new ContactInfoHelper(this, GeoUtil.getCurrentCountryIso(this));
-        mBlockContactHelper = new BlockContactHelper(this, new LookupProviderImpl(this));
+        mLookupProvider = LookupProviderImpl.INSTANCE.get(this);
+        mContactInfoHelper = new ContactInfoHelper(this, GeoUtil.getCurrentCountryIso(this),
+                mLookupProvider);
+        mBlockContactHelper = new BlockContactHelper(this);
 
         mQuickContactBadge = (QuickContactBadge) findViewById(R.id.quick_contact_photo);
         mQuickContactBadge.setOverlay(null);
@@ -178,7 +184,8 @@ public class CallStatsDetailActivity extends Activity implements
     @Override
     public void onResume() {
         super.onResume();
-        new UpdateContactTask().execute(mData.number.toString(), mData.countryIso);
+        new UpdateContactTask().execute(mData.number.toString(), mData.countryIso,
+                String.valueOf(mData.isInCallPluginContactId));
     }
 
     @Override
@@ -296,6 +303,11 @@ public class CallStatsDetailActivity extends Activity implements
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.call_stats_details_options, menu);
         return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
+    protected void onDestroy() {
+        LookupProviderImpl.INSTANCE.release();
     }
 
     @Override

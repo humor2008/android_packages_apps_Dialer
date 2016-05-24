@@ -109,6 +109,7 @@
   <string name="search_shortcut_call_using">Telefonar com <xliff:g id="name">%1$s</xliff:g></string>
   <!-- CallerInfo Provider Settings strings -->
   <string name="callerinfo_provider_auth_yes">Sim</string>
+  <string name="callerinfo_provider_auth_no_short">Não</string>
   <string name="callerinfo_provider_auth_no">Não, obrigado</string>
   <string name="callerinfo_provider_auth_access"><xliff:g id="provider_name">%s</xliff:g> terá acesso aos seus contactos, ao seu perfil e à sua conta Cyanogen OS, que poderá incluir o seu endereço de e-mail.</string>
   <string name="callerinfo_provider_auth_learn_more">Saber mais</string>
@@ -140,4 +141,5 @@
   <string name="search_shortcut_view_note">Ver nota</string>
   <!-- Note DeepLink mod settings summary in Dialer -->
   <string name="note_mod_settings_summary">Tirar notas a partir de qualquer lugar</string>
+  <string name="callerinfo_provider_status_disabling">A desativar</string>
 </resources>

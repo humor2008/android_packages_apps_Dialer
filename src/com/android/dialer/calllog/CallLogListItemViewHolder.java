@@ -47,10 +47,12 @@ import com.android.contacts.common.dialog.CallSubjectDialog;
 import com.android.contacts.common.testing.NeededForTesting;
 import com.android.contacts.common.util.UriUtils;
 import com.android.dialer.R;
+import com.android.dialer.deeplink.DeepLinkCache;
 import com.android.dialer.util.DialerUtils;
 import com.android.dialer.util.PhoneNumberUtil;
 import com.android.dialer.voicemail.VoicemailPlaybackPresenter;
 import com.android.dialer.voicemail.VoicemailPlaybackLayout;
+import com.android.dialer.MiniMarkActivity;
 
 import com.android.phone.common.incall.CallMethodInfo;
 import com.android.phone.common.incall.DialerDataSubscription;
@@ -99,6 +101,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
     public View detailsButtonView;
     public View callWithNoteButtonView;
     public View blockCallerButtonView;
+    public View usermarkButtonView;
 
     private ContactInfoHelper mContactInfoHelper;
 
@@ -212,6 +215,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
             VoicemailPlaybackPresenter voicemailPlaybackPresenter,
             BlockContactPresenter blockContactPresenter,
             ContactInfoHelper contactInfoHelper,
+            DeepLinkCache deepLinkCache,
             View rootView,
             DialerQuickContact dialerQuickContact,
             View primaryActionView,
@@ -228,8 +232,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
         mCallLogListItemHelper = callLogListItemHelper;
         mVoicemailPlaybackPresenter = voicemailPlaybackPresenter;
         mBlockContactPresenter = blockContactPresenter;
-        mDeepLinkPresenter = new DeepLinkPresenter(mContext);
-        mDeepLinkPresenter.setCallLogViewHolder(this);
+        mDeepLinkPresenter = new DeepLinkPresenter(mContext, this, deepLinkCache);
         mContactInfoHelper = contactInfoHelper;
 
         this.rootView = rootView;
@@ -263,7 +266,8 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
             CallLogListItemHelper callLogListItemHelper,
             VoicemailPlaybackPresenter voicemailPlaybackPresenter,
             BlockContactPresenter blockContactPresenter,
-            ContactInfoHelper contactInfoHelper) {
+            ContactInfoHelper contactInfoHelper,
+            DeepLinkCache deepLinkCache) {
 
         return new CallLogListItemViewHolder(
                 context,
@@ -273,6 +277,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
                 voicemailPlaybackPresenter,
                 blockContactPresenter,
                 contactInfoHelper,
+                deepLinkCache,
                 view,
                 (DialerQuickContact) view.findViewById(R.id.quick_contact_photo),
                 view.findViewById(R.id.primary_action_view),
@@ -320,6 +325,9 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
 
             detailsButtonView = actionsView.findViewById(R.id.details_action);
             detailsButtonView.setOnClickListener(this);
+
+            usermarkButtonView = actionsView.findViewById(R.id.user_mark_action);
+            usermarkButtonView.setOnClickListener(this);
 
             callWithNoteButtonView = actionsView.findViewById(R.id.call_with_note_action);
             callWithNoteButtonView.setOnClickListener(this);
@@ -400,12 +408,8 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
             callButtonView.setVisibility(View.GONE);
         }
 
-        if (mDeepLinkPresenter.mDeepLink != null) {
-            ImageView icon = (ImageView) viewNoteButton.findViewById(R.id.view_note_action_icon);
-            icon.setImageDrawable(mDeepLinkPresenter.mDeepLink.getDrawableIcon(mContext));
-        } else {
-            viewNoteButton.setVisibility(View.GONE);
-        }
+        mDeepLinkPresenter.bindActionButton();
+
         // If one of the calls had video capabilities, show the video call button.
         if (mTelecomCallLogCache.isVideoEnabled() && canPlaceCallToNumber &&
                 phoneCallDetailsViews.callTypeIcons.isVideoShown() ||
@@ -435,7 +439,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
             mVoicemailPlaybackPresenter.setPlaybackView(
                     voicemailPlaybackView, uri, mVoicemailPrimaryActionButtonClicked);
             mVoicemailPrimaryActionButtonClicked = false;
-
+            usermarkButtonView.setVisibility(View.GONE);
             CallLogAsyncTaskUtil.markVoicemailAsRead(mContext, uri);
         } else {
             voicemailPlaybackView.setVisibility(View.GONE);
@@ -583,6 +587,10 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
                                                                            view in dialog. */
                     numberType, /* phone number type (e.g. mobile) in second line of contact view */
                     accountHandle);
+        } else if (view.getId() == R.id.user_mark_action) {
+                Intent intent = new Intent(mContext, MiniMarkActivity.class);
+                intent.putExtra("number", number);
+                DialerUtils.startActivityWithErrorToast(mContext, intent);
 
         } else if (view.getId() == R.id.view_note_action) {
             mDeepLinkPresenter.viewNote();
@@ -639,6 +647,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
                 null /* voicemailPlaybackPresenter */,
                 null /* blockContactPresenter */,
                 null /* ContactInfoHelper */,
+                null /* DeepLinkCache */,
                 new View(context),
                 new DialerQuickContact(context),
                 new View(context),

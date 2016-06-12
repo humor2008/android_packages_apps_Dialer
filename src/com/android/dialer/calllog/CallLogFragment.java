@@ -267,6 +267,8 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
             // Return false; we did not take ownership of the cursor
             return false;
         }
+
+        mAdapter.mDeepLinkCache.buildCache();
         mAdapter.setLoading(false);
         mAdapter.changeCursor(cursor);
         // This will update the state of the "Clear call log" menu item.
@@ -509,6 +511,11 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
 
     /** Requests updates to the data to be shown. */
     private void refreshData() {
+        if (!isAdded() || getActivity() == null) {
+            // Fragment is not attached to the activity nothing to do
+            return;
+        }
+
         // Prevent unnecessary refresh.
         if (mRefreshDataRequired) {
             // Mark all entries in the contact info cache as out of date, so they will be looked up
@@ -550,8 +557,13 @@ public class CallLogFragment extends Fragment implements CallLogQueryHandler.Lis
             if (!onEntry) {
                 mCallLogQueryHandler.markMissedCallsAsRead();
             }
-            CallLogNotificationsHelper.removeMissedCallNotifications(getActivity());
-            CallLogNotificationsHelper.updateVoicemailNotifications(getActivity());
+
+            Activity activity = getActivity();
+            if (activity == null) {
+                return;
+            }
+            CallLogNotificationsHelper.removeMissedCallNotifications(activity);
+            CallLogNotificationsHelper.updateVoicemailNotifications(activity);
         }
     }
 
